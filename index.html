@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>樂齡健康記錄</title>
+    <title>血壓紀錄小幫手</title>
     <!-- 使用 Tailwind CSS 快速構建介面 -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- 圖表庫 Chart.js -->
@@ -81,7 +81,7 @@
 
     <!-- 標題欄 (緊湊型) -->
     <header class="bg-teal-600 text-white p-3 shadow-md sticky top-0 z-50">
-        <h1 class="text-xl font-bold text-center">💖 樂齡健康助理</h1>
+        <h1 class="text-xl font-bold text-center">💖 血壓紀錄小幫手</h1>
     </header>
 
     <main class="p-3">
@@ -443,7 +443,7 @@
             const link = document.createElement("a");
             const url = URL.createObjectURL(blob);
             link.setAttribute("href", url);
-            link.setAttribute("download", `健康紀錄匯出_${new Date().toISOString().split('T')[0]}.csv`);
+            link.setAttribute("download", `血壓紀錄小幫手匯出_${new Date().toISOString().split('T')[0]}.csv`);
             link.click();
             showToast("✅ CSV 匯出成功");
         }
