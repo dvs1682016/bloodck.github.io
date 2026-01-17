@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>樂齡健康記錄</title>
+    <!-- 使用 Tailwind CSS 快速構建介面 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 圖表庫 Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- 圖示庫 Lucide -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        /* 針對長者設計的特定樣式優化 */
+        :root {
+            --primary-teal: #0d9488;       /* 湖水綠 - 舒張壓 */
+            --primary-red: #e11d48;        /* 紅色 - 收縮壓 */
+            --primary-amber: #d97706;      /* 橘黃色 - 心跳 */
+            --warning-bg: #FFD2D2;         /* 異常提醒背景色 */
+        }
+        body {
+            font-size: 16px; /* 基礎字體保持微調縮小，以利一屏顯示 */
+            background-color: #f8fafc;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        /* 滑桿軌道與按鈕 */
+        input[type=range] {
+            height: 10px;
+            border-radius: 5px;
+        }
+        .btn-tap {
+            min-width: 48px;
+            min-height: 48px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            transition: transform 0.1s;
+        }
+        .btn-tap:active {
+            transform: scale(0.9);
+        }
+        /* 自定義 Toast 提示 */
+        #toast {
+            visibility: hidden;
+            min-width: 200px;
+            background-color: #333;
+            color: #fff;
+            text-align: center;
+            border-radius: 12px;
+            padding: 12px;
+            position: fixed;
+            z-index: 1050;
+            left: 50%;
+            bottom: 90px;
+            transform: translateX(-50%);
+            font-size: 18px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        }
+        #toast.show {
+            visibility: visible;
+            animation: fadein 0.5s, fadeout 0.5s 2.5s;
+        }
+        @keyframes fadein { from {bottom: 70px; opacity: 0;} to {bottom: 90px; opacity: 1;} }
+        @keyframes fadeout { from {bottom: 90px; opacity: 1;} to {bottom: 70px; opacity: 0;} }
+
+        /* 底部導航按鈕樣式 - 恢復放大版本 */
+        .nav-btn {
+            @apply flex flex-col items-center justify-center w-full h-full text-gray-400 transition-colors;
+        }
+        .nav-btn.active {
+            @apply text-teal-600 font-bold;
+        }
+        .nav-btn span {
+            @apply text-xs mt-1; /* 恢復文字大小 */
+        }
+    </style>
+</head>
+<body class="max-w-md mx-auto min-h-screen pb-24 bg-gray-50">
+
+    <!-- 標題欄 (緊湊型) -->
+    <header class="bg-teal-600 text-white p-3 shadow-md sticky top-0 z-50">
+        <h1 class="text-xl font-bold text-center">💖 樂齡健康助理</h1>
+    </header>
+
+    <main class="p-3">
+        
+        <!-- ================= 頁面 1: 今日記錄 ================= -->
+        <div id="page-record" class="page-content space-y-4">
+            
+            <!-- 日期切換區 (緊湊型) -->
+            <section class="bg-white p-2 rounded-xl shadow-sm border border-gray-100">
+                <div class="flex items-center justify-between">
+                    <button onclick="changeDate(-1)" class="btn-tap bg-gray-100 rounded-full text-gray-600">
+                        <i data-lucide="chevron-left" size="24"></i>
+                    </button>
+                    <input type="date" id="recordDate" class="text-xl font-bold border-none bg-transparent focus:ring-0 text-center text-teal-800" onchange="loadDataByDate()">
+                    <button onclick="changeDate(1)" class="btn-tap bg-gray-100 rounded-full text-gray-600">
+                        <i data-lucide="chevron-right" size="24"></i>
+                    </button>
+                </div>
+                <p id="dateStatus" class="text-center text-xs text-teal-600 mt-1 font-medium">今天</p>
+            </section>
+
+            <!-- 滑桿輸入區 (緊湊佈局：減少垂直間距) -->
+            <section class="space-y-4 bg-white p-4 rounded-xl shadow-md border border-gray-100">
+                
+                <!-- 收縮壓 -->
+                <div class="space-y-1">
+                    <div class="flex justify-between items-end">
+                        <label class="text-lg font-bold text-rose-700 flex items-center gap-1">
+                            收縮壓 <span class="text-[10px] font-normal text-gray-400">(mmHg)</span>
+                        </label>
+                        <span id="sysValue" class="text-4xl font-black text-rose-600">120</span>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <button onclick="adjust('sys', -1)" class="btn-tap bg-rose-100 text-rose-700 rounded-xl text-2xl">－</button>
+                        <input type="range" id="sysRange" min="80" max="200" value="120" step="1" class="w-full" oninput="updateDisplay()" style="accent-color: var(--primary-red);">
+                        <button onclick="adjust('sys', 1)" class="btn-tap bg-rose-100 text-rose-700 rounded-xl text-2xl">＋</button>
+                    </div>
+                </div>
+
+                <!-- 舒張壓 -->
+                <div class="space-y-1">
+                    <div class="flex justify-between items-end">
+                        <label class="text-lg font-bold text-teal-700 flex items-center gap-1">
+                            舒張壓 <span class="text-[10px] font-normal text-gray-400">(mmHg)</span>
+                        </label>
+                        <span id="diaValue" class="text-4xl font-black text-teal-600">70</span>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <button onclick="adjust('dia', -1)" class="btn-tap bg-teal-100 text-teal-700 rounded-xl text-2xl">－</button>
+                        <input type="range" id="diaRange" min="40" max="120" value="70" step="1" class="w-full" oninput="updateDisplay()" style="accent-color: var(--primary-teal);">
+                        <button onclick="adjust('dia', 1)" class="btn-tap bg-teal-100 text-teal-700 rounded-xl text-2xl">＋</button>
+                    </div>
+                </div>
+
+                <!-- 心跳 -->
+                <div class="space-y-1">
+                    <div class="flex justify-between items-end">
+                        <label class="text-lg font-bold text-amber-700 flex items-center gap-1">
+                            心跳 <span class="text-[10px] font-normal text-gray-400">(bpm)</span>
+                        </label>
+                        <span id="pulseValue" class="text-4xl font-black text-amber-600">70</span>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <button onclick="adjust('pulse', -1)" class="btn-tap bg-amber-100 text-amber-700 rounded-xl text-2xl">－</button>
+                        <input type="range" id="pulseRange" min="40" max="140" value="70" step="1" class="w-full" oninput="updateDisplay()" style="accent-color: var(--primary-amber);">
+                        <button onclick="adjust('pulse', 1)" class="btn-tap bg-amber-100 text-amber-700 rounded-xl text-2xl">＋</button>
+                    </div>
+                </div>
+
+                <!-- 操作按鈕 -->
+                <div class="grid grid-cols-2 gap-3 pt-2">
+                    <button onclick="saveData()" class="col-span-2 py-3 bg-teal-600 text-white rounded-xl text-xl font-bold shadow-lg active:bg-teal-700 flex items-center justify-center gap-2">
+                        <i data-lucide="save" size="22"></i> 儲存數據
+                    </button>
+                    <button onclick="resetToDefault()" class="py-2 bg-gray-100 text-gray-600 rounded-xl font-bold border border-gray-200 flex items-center justify-center gap-1 text-sm">
+                        <i data-lucide="rotate-ccw" size="14"></i> 重設建議值
+                    </button>
+                    <button onclick="deleteData()" class="py-2 bg-white text-rose-600 rounded-xl font-bold border border-rose-200 flex items-center justify-center gap-1 text-sm">
+                        <i data-lucide="trash-2" size="14"></i> 刪除紀錄
+                    </button>
+                </div>
+            </section>
+        </div>
+
+        <!-- ================= 頁面 2: 趨勢分析 ================= -->
+        <div id="page-trends" class="page-content hidden space-y-4">
+            <section class="bg-white p-3 rounded-xl shadow-sm border border-gray-100 space-y-3">
+                <h3 class="text-lg font-bold flex items-center gap-2 text-gray-800">
+                    <i data-lucide="line-chart" class="text-teal-500"></i> 健康趨勢
+                </h3>
+                
+                <div class="grid grid-cols-2 gap-2 bg-gray-50 p-2 rounded-lg border border-gray-100">
+                    <div>
+                        <label class="block text-[10px] text-gray-500 mb-1">開始日期</label>
+                        <input type="date" id="startDate" class="border border-gray-200 rounded p-1 text-sm w-full" onchange="renderChart()">
+                    </div>
+                    <div>
+                        <label class="block text-[10px] text-gray-500 mb-1">結束日期</label>
+                        <input type="date" id="endDate" class="border border-gray-200 rounded p-1 text-sm w-full" onchange="renderChart()">
+                    </div>
+                </div>
+    
+                <div class="relative w-full h-[300px]">
+                    <canvas id="bpChart"></canvas>
+                </div>
+            </section>
+        </div>
+
+        <!-- ================= 頁面 3: 歷史列表 ================= -->
+        <div id="page-history" class="page-content hidden space-y-3">
+            <section class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                <div class="bg-gray-50 p-3 border-b border-gray-100 flex justify-between items-center">
+                    <h3 class="font-bold text-gray-700 text-sm">歷史紀錄列表</h3>
+                    <button onclick="exportToCSV()" class="px-3 py-1 bg-teal-600 text-white rounded-lg text-xs font-bold flex items-center gap-1 shadow">
+                        <i data-lucide="download" size="12"></i> 匯出 CSV
+                    </button>
+                </div>
+                <div id="historyList" class="divide-y divide-gray-100 max-h-[70vh] overflow-y-auto">
+                </div>
+            </section>
+        </div>
+
+    </main>
+
+    <!-- 底部導航欄 (恢復舒適的大尺寸) -->
+    <nav class="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 h-20 flex justify-around items-center shadow-2xl z-40 max-w-md mx-auto">
+        <button onclick="switchPage('page-record')" class="nav-btn active" id="nav-record">
+            <i data-lucide="pencil-line" size="28"></i>
+            <span class="font-medium">輸入數據</span>
+        </button>
+        <button onclick="switchPage('page-trends')" class="nav-btn" id="nav-trends">
+            <i data-lucide="trending-up" size="28"></i>
+            <span class="font-medium">趨勢分析</span>
+        </button>
+        <button onclick="switchPage('page-history')" class="nav-btn" id="nav-history">
+            <i data-lucide="history" size="28"></i>
+            <span class="font-medium">歷史清單</span>
+        </button>
+    </nav>
+
+    <div id="toast">提示訊息</div>
+
+    <script>
+        let bpChart = null;
+        const DEFAULT_VALUES = { sys: 120, dia: 70, pulse: 70 };
+        let currentPage = 'page-record';
+
+        // WHO 規範參考 (收縮壓 >= 140 或 舒張壓 >= 90)
+        const THRESHOLD = { sys: 140, dia: 90 };
+
+        window.onload = () => {
+            lucide.createIcons();
+            const today = getFormattedDate(new Date());
+            document.getElementById('recordDate').value = today;
+            document.getElementById('endDate').value = today;
+            const lastWeek = new Date();
+            lastWeek.setDate(lastWeek.getDate() - 14); 
+            document.getElementById('startDate').value = getFormattedDate(lastWeek);
+            switchPage('page-record');
+            loadDataByDate();
+        };
+
+        function switchPage(pageId) {
+            currentPage = pageId;
+            document.querySelectorAll('.page-content').forEach(p => p.classList.add('hidden'));
+            document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+            document.getElementById(pageId).classList.remove('hidden');
+            const navId = 'nav-' + pageId.replace('page-', '');
+            document.getElementById(navId).classList.add('active');
+            if (pageId === 'page-trends') setTimeout(renderChart, 100); 
+            else if (pageId === 'page-history') renderHistoryList();
+            lucide.createIcons();
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        function getFormattedDate(date) { return date.toISOString().split('T')[0]; }
+
+        function changeDate(days) {
+            const el = document.getElementById('recordDate');
+            const d = new Date(el.value);
+            d.setDate(d.getDate() + days);
+            el.value = getFormattedDate(d);
+            loadDataByDate();
+        }
+
+        function adjust(type, amount) {
+            const el = document.getElementById(type + 'Range');
+            let val = parseInt(el.value) + amount;
+            if (val >= el.min && val <= el.max) {
+                el.value = val;
+                updateDisplay();
+            }
+        }
+
+        function updateDisplay() {
+            const sys = document.getElementById('sysRange').value;
+            const dia = document.getElementById('diaRange').value;
+            const pulse = document.getElementById('pulseRange').value;
+            document.getElementById('sysValue').innerText = sys;
+            document.getElementById('diaValue').innerText = dia;
+            document.getElementById('pulseValue').innerText = pulse;
+        }
+
+        function loadDataByDate() {
+            const dateStr = document.getElementById('recordDate').value;
+            const records = JSON.parse(localStorage.getItem('senior_health_records') || '{}');
+            const data = records[dateStr];
+            const today = getFormattedDate(new Date());
+            const statusEl = document.getElementById('dateStatus');
+            
+            if (dateStr === today) {
+                statusEl.innerText = "📅 今天";
+                statusEl.className = "text-center text-xs text-teal-600 mt-1 font-bold";
+            } else {
+                statusEl.innerText = data ? "✅ 已紀錄" : "📝 尚未輸入";
+                statusEl.className = data ? "text-center text-xs text-green-600 mt-1 font-medium" : "text-center text-xs text-gray-400 mt-1 font-medium";
+            }
+
+            const values = data || DEFAULT_VALUES;
+            document.getElementById('sysRange').value = values.sys;
+            document.getElementById('diaRange').value = values.dia;
+            document.getElementById('pulseRange').value = values.pulse;
+            updateDisplay();
+        }
+
+        function saveData() {
+            const dateStr = document.getElementById('recordDate').value;
+            const data = {
+                sys: parseInt(document.getElementById('sysRange').value),
+                dia: parseInt(document.getElementById('diaRange').value),
+                pulse: parseInt(document.getElementById('pulseRange').value)
+            };
+            const records = JSON.parse(localStorage.getItem('senior_health_records') || '{}');
+            records[dateStr] = data;
+            localStorage.setItem('senior_health_records', JSON.stringify(records));
+            showToast("✅ 資料已儲存");
+            loadDataByDate();
+        }
+
+        function deleteData() {
+            const dateStr = document.getElementById('recordDate').value;
+            const records = JSON.parse(localStorage.getItem('senior_health_records') || '{}');
+            if (records[dateStr] && confirm('確定刪除這筆紀錄嗎？')) {
+                delete records[dateStr];
+                localStorage.setItem('senior_health_records', JSON.stringify(records));
+                showToast("🗑️ 已移除紀錄");
+                loadDataByDate();
+            }
+        }
+
+        function showToast(msg) {
+            const t = document.getElementById("toast");
+            t.innerText = msg;
+            t.className = "show";
+            setTimeout(() => { t.className = ""; }, 3000);
+        }
+
+        function renderChart() {
+            if (currentPage !== 'page-trends') return;
+            const start = document.getElementById('startDate').value;
+            const end = document.getElementById('endDate').value;
+            const records = JSON.parse(localStorage.getItem('senior_health_records') || '{}');
+            const sortedDates = Object.keys(records).filter(d => d >= start && d <= end).sort();
+            
+            const sysData = sortedDates.map(d => records[d].sys);
+            const diaData = sortedDates.map(d => records[d].dia);
+            const pulseData = sortedDates.map(d => records[d].pulse);
+
+            const ctx = document.getElementById('bpChart').getContext('2d');
+            if (bpChart) bpChart.destroy();
+
+            bpChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: sortedDates.map(d => d.substring(5)),
+                    datasets: [
+                        { label: '收縮壓', data: sysData, borderColor: '#e11d48', backgroundColor: '#e11d48', tension: 0.3, pointRadius: 4 },
+                        { label: '舒張壓', data: diaData, borderColor: '#0d9488', backgroundColor: '#0d9488', tension: 0.3, pointRadius: 4 },
+                        { label: '心跳', data: pulseData, borderColor: '#d97706', backgroundColor: '#d97706', tension: 0.3, pointRadius: 4 }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { position: 'top', labels: { font: { size: 12 }, usePointStyle: true } }
+                    }
+                }
+            });
+        }
+
+        function renderHistoryList() {
+            const listEl = document.getElementById('historyList');
+            const records = JSON.parse(localStorage.getItem('senior_health_records') || '{}');
+            const sortedDates = Object.keys(records).sort().reverse();
+            
+            if (sortedDates.length === 0) {
+                listEl.innerHTML = `<div class="p-10 text-center text-gray-400">尚無歷史數據</div>`;
+                return;
+            }
+
+            listEl.innerHTML = sortedDates.map(date => {
+                const d = records[date];
+                const isHigh = d.sys >= THRESHOLD.sys || d.dia >= THRESHOLD.dia;
+                const bgColor = isHigh ? 'background-color: var(--warning-bg);' : 'background-color: white;';
+                const warningIcon = isHigh ? '<i data-lucide="alert-triangle" class="text-rose-600 mr-1" size="14"></i>' : '';
+
+                return `
+                    <div class="p-4 flex justify-between items-center active:bg-gray-50 border-b border-gray-100 transition-colors" 
+                         style="${bgColor}" onclick="jumpToDate('${date}')">
+                        <div class="space-y-1">
+                            <div class="text-lg font-bold text-gray-800 flex items-center">
+                                ${warningIcon} ${date}
+                            </div>
+                            <div class="flex gap-2">
+                                <span class="px-2 py-0.5 bg-rose-50 text-rose-700 rounded text-xs font-bold border border-rose-100">${d.sys}</span>
+                                <span class="px-2 py-0.5 bg-teal-50 text-teal-700 rounded text-xs font-bold border border-teal-100">${d.dia}</span>
+                            </div>
+                        </div>
+                        <div class="text-right">
+                            <div class="text-amber-600 font-black text-xl">${d.pulse} <span class="text-[10px] font-normal text-gray-400">bpm</span></div>
+                            <div class="text-[10px] text-teal-600 font-bold">點擊編輯 ></div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            lucide.createIcons();
+        }
+
+        function jumpToDate(date) {
+            document.getElementById('recordDate').value = date;
+            switchPage('page-record');
+            loadDataByDate();
+            showToast("已載入 " + date);
+        }
+
+        function resetToDefault() {
+            document.getElementById('sysRange').value = DEFAULT_VALUES.sys;
+            document.getElementById('diaRange').value = DEFAULT_VALUES.dia;
+            document.getElementById('pulseRange').value = DEFAULT_VALUES.pulse;
+            updateDisplay();
+            showToast("已重設為建議值");
+        }
+
+        function exportToCSV() {
+            const records = JSON.parse(localStorage.getItem('senior_health_records') || '{}');
+            const sortedDates = Object.keys(records).sort();
+            if (sortedDates.length === 0) {
+                showToast("無資料可匯出");
+                return;
+            }
+            let csvContent = "日期,收縮壓,舒張壓,心跳\n";
+            sortedDates.forEach(date => {
+                const d = records[date];
+                csvContent += `${date},${d.sys},${d.dia},${d.pulse}\n`;
+            });
+            const BOM = "\uFEFF";
+            const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement("a");
+            const url = URL.createObjectURL(blob);
+            link.setAttribute("href", url);
+            link.setAttribute("download", `健康紀錄匯出_${new Date().toISOString().split('T')[0]}.csv`);
+            link.click();
+            showToast("✅ CSV 匯出成功");
+        }
+    </script>
+</body>
+</html>
