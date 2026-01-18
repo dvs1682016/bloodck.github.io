@@ -4,7 +4,18 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>血壓紀錄小幫手</title>
-    <!-- 使用 Tailwind CSS 快速構建介面 -->
+    
+    <!-- PWA 基本設定 -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#0d9488">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="血壓紀錄小幫手">
+    <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+    <link rel="icon" type="image/png" sizes="512x512" href="icons/icon-512.png">
+<!-- 使用 Tailwind CSS 快速構建介面 -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- 圖表庫 Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -448,5 +459,16 @@
             showToast("✅ CSV 匯出成功");
         }
     </script>
+
+    <!-- Service Worker 註冊（PWA 離線快取） -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./service-worker.js')
+                    .catch(err => console.warn('Service Worker 註冊失敗：', err));
+            });
+        }
+    </script>
+
 </body>
 </html>
