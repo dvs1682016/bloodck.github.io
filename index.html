@@ -127,9 +127,9 @@
                     <div class="col-span-2">
                         <label class="block text-[10px] text-gray-500 mb-1">紀錄時間（24 小時制）</label>
                         <input type="time" id="recordTime" class="w-full border border-gray-200 rounded-xl p-2 text-lg font-black text-center text-teal-800" onchange="onTimeChanged()">
+                        <div class="text-[10px] text-gray-400 mt-1">時間會自動帶入目前時間；若要補登可自行調整。</div>
                     </div>
                     <div class="col-span-1 flex flex-col gap-2">
-                        <button onclick="setTimeNow()" class="py-2 bg-gray-100 text-gray-700 rounded-xl font-bold border border-gray-200 text-sm">現在</button>
                         <button onclick="startNewEntry()" class="py-2 bg-teal-600 text-white rounded-xl font-bold shadow text-sm active:bg-teal-700">新增一筆</button>
                     </div>
                 </div>
@@ -295,6 +295,9 @@
         // 目前是否在編輯某一筆
         let currentEntryId = null;
 
+        // 「時間」是否被使用者手動調整過（若沒有，會自動帶入目前時間）
+        let timeTouched = false;
+
         window.onload = () => {
             lucide.createIcons();
 
@@ -306,7 +309,22 @@
             lastTwoWeeks.setDate(lastTwoWeeks.getDate() - 14);
             document.getElementById('startDate').value = getFormattedDate(lastTwoWeeks);
 
-            setTimeNow();
+            // 預設時間：帶入目前時間（不需先按任何按鈕）
+            setTimeNow(true);
+
+            // 只要是「新增模式」且使用者尚未手動改時間，就持續自動更新時間
+            setInterval(() => {
+                if (!currentEntryId && !timeTouched) {
+                    setTimeNow(true);
+                }
+            }, 15000);
+
+            // 從背景回到前景時，也更新一次時間
+            document.addEventListener('visibilitychange', () => {
+                if (!document.hidden && !currentEntryId && !timeTouched) {
+                    setTimeNow(true);
+                }
+            });
             switchPage('page-record');
             loadDataByDate();
         };
@@ -336,21 +354,23 @@
             return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
         }
 
-        function setTimeNow() {
+        function setTimeNow(silent = true) {
             document.getElementById('recordTime').value = getNowTimeHHMM();
             if (!currentEntryId) updateActionButtons();
-            showToast('⏱️ 已填入目前時間');
+            // 不主動跳提示，避免干擾
         }
 
         function onTimeChanged() {
-            // 只要時間被改動就更新按鈕顯示
+            // 使用者手動改動時間：視為「補登/調整」；之後不再自動覆蓋
+            timeTouched = true;
             updateActionButtons();
         }
 
         function startNewEntry() {
             currentEntryId = null;
+            timeTouched = false;
             document.getElementById('editingBadge').classList.add('hidden');
-            document.getElementById('recordTime').value = getNowTimeHHMM();
+            setTimeNow(true);
             document.getElementById('sysRange').value = DEFAULT_VALUES.sys;
             document.getElementById('diaRange').value = DEFAULT_VALUES.dia;
             document.getElementById('pulseRange').value = DEFAULT_VALUES.pulse;
@@ -505,6 +525,8 @@
 
         function loadEntryToUI(entry) {
             if (!entry) return;
+            // 進入「編輯」狀態：時間以資料為準，不再自動覆蓋
+            timeTouched = true;
             document.getElementById('recordTime').value = entry.time || '08:00';
             document.getElementById('sysRange').value = entry.sys;
             document.getElementById('diaRange').value = entry.dia;
@@ -551,7 +573,8 @@
             // - 否則選最後一筆（時間最晚）
             if (entries.length === 0) {
                 currentEntryId = null;
-                document.getElementById('recordTime').value = getNowTimeHHMM();
+                timeTouched = false;
+                setTimeNow(true);
                 document.getElementById('sysRange').value = DEFAULT_VALUES.sys;
                 document.getElementById('diaRange').value = DEFAULT_VALUES.dia;
                 document.getElementById('pulseRange').value = DEFAULT_VALUES.pulse;
@@ -617,12 +640,12 @@
 
         function saveData() {
             const dateStr = document.getElementById('recordDate').value;
-            const timeStr = (document.getElementById('recordTime').value || '').trim();
-
-            if (!timeStr) {
-                showToast('⚠️ 請先選擇時間');
-                return;
+            // 新增模式：若使用者沒有手動調整時間，儲存時以「當下」為準
+            if (!currentEntryId && !timeTouched) {
+                setTimeNow(true);
             }
+
+            const timeStr = (document.getElementById('recordTime').value || '').trim() || getNowTimeHHMM();
 
             const data = {
                 sys: parseInt(document.getElementById('sysRange').value, 10),
