@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>血壓紀錄小幫手</title>
-    
+
     <!-- PWA 基本設定 -->
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#0d9488">
@@ -15,14 +15,15 @@
     <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
     <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
     <link rel="icon" type="image/png" sizes="512x512" href="icons/icon-512.png">
-<!-- 使用 Tailwind CSS 快速構建介面 -->
+
+    <!-- 使用 Tailwind CSS 快速構建介面 -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- 圖表庫 Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <!-- 圖示庫 Lucide -->
     <script src="https://unpkg.com/lucide@latest"></script>
+
     <style>
-        /* 針對長者設計的特定樣式優化 */
         :root {
             --primary-teal: #0d9488;       /* 湖水綠 - 舒張壓 */
             --primary-red: #e11d48;        /* 紅色 - 收縮壓 */
@@ -30,12 +31,11 @@
             --warning-bg: #FFD2D2;         /* 異常提醒背景色 */
         }
         body {
-            font-size: 16px; /* 基礎字體保持微調縮小，以利一屏顯示 */
+            font-size: 16px;
             background-color: #f8fafc;
             user-select: none;
             -webkit-tap-highlight-color: transparent;
         }
-        /* 滑桿軌道與按鈕 */
         input[type=range] {
             height: 10px;
             border-radius: 5px;
@@ -49,9 +49,8 @@
             font-weight: bold;
             transition: transform 0.1s;
         }
-        .btn-tap:active {
-            transform: scale(0.9);
-        }
+        .btn-tap:active { transform: scale(0.9); }
+
         /* 自定義 Toast 提示 */
         #toast {
             visibility: hidden;
@@ -76,7 +75,6 @@
         @keyframes fadein { from {bottom: 70px; opacity: 0;} to {bottom: 90px; opacity: 1;} }
         @keyframes fadeout { from {bottom: 90px; opacity: 1;} to {bottom: 70px; opacity: 0;} }
 
-        /* 底部導航按鈕樣式 - 恢復放大版本 */
         .nav-btn {
             @apply flex flex-col items-center justify-center w-full h-full text-gray-400 transition-colors;
         }
@@ -84,23 +82,34 @@
             @apply text-teal-600 font-bold;
         }
         .nav-btn span {
-            @apply text-xs mt-1; /* 恢復文字大小 */
+            @apply text-xs mt-1;
+        }
+
+        .pill {
+            padding: 2px 8px;
+            border-radius: 9999px;
+            font-size: 12px;
+            font-weight: 700;
+        }
+
+        .entry-selected {
+            outline: 2px solid rgba(13, 148, 136, 0.35);
+            background-color: rgba(13, 148, 136, 0.04);
         }
     </style>
 </head>
 <body class="max-w-md mx-auto min-h-screen pb-24 bg-gray-50">
 
-    <!-- 標題欄 (緊湊型) -->
     <header class="bg-teal-600 text-white p-3 shadow-md sticky top-0 z-50">
         <h1 class="text-xl font-bold text-center">💖 血壓紀錄小幫手</h1>
     </header>
 
     <main class="p-3">
-        
+
         <!-- ================= 頁面 1: 今日記錄 ================= -->
         <div id="page-record" class="page-content space-y-4">
-            
-            <!-- 日期切換區 (緊湊型) -->
+
+            <!-- 日期 + 時間 -->
             <section class="bg-white p-2 rounded-xl shadow-sm border border-gray-100">
                 <div class="flex items-center justify-between">
                     <button onclick="changeDate(-1)" class="btn-tap bg-gray-100 rounded-full text-gray-600">
@@ -111,12 +120,37 @@
                         <i data-lucide="chevron-right" size="24"></i>
                     </button>
                 </div>
+
                 <p id="dateStatus" class="text-center text-xs text-teal-600 mt-1 font-medium">今天</p>
+
+                <div class="mt-2 grid grid-cols-3 gap-2 items-end">
+                    <div class="col-span-2">
+                        <label class="block text-[10px] text-gray-500 mb-1">紀錄時間（24 小時制）</label>
+                        <input type="time" id="recordTime" class="w-full border border-gray-200 rounded-xl p-2 text-lg font-black text-center text-teal-800" onchange="onTimeChanged()">
+                    </div>
+                    <div class="col-span-1 flex flex-col gap-2">
+                        <button onclick="setTimeNow()" class="py-2 bg-gray-100 text-gray-700 rounded-xl font-bold border border-gray-200 text-sm">現在</button>
+                        <button onclick="startNewEntry()" class="py-2 bg-teal-600 text-white rounded-xl font-bold shadow text-sm active:bg-teal-700">新增一筆</button>
+                    </div>
+                </div>
             </section>
 
-            <!-- 滑桿輸入區 (緊湊佈局：減少垂直間距) -->
+            <!-- 本日多次紀錄列表 -->
+            <section class="bg-white p-3 rounded-xl shadow-sm border border-gray-100">
+                <div class="flex items-center justify-between">
+                    <h3 class="text-sm font-bold text-gray-700">
+                        本日紀錄
+                        <span id="daySummary" class="ml-2 text-[11px] font-bold text-teal-700"></span>
+                    </h3>
+                    <span id="editingBadge" class="text-[11px] px-2 py-1 rounded-full bg-teal-50 text-teal-700 font-bold border border-teal-100 hidden">編輯中</span>
+                </div>
+                <div id="dayEntries" class="mt-3 space-y-2"></div>
+                <p class="text-[10px] text-gray-400 mt-2">提示：點選某一筆可編輯；未選取時按「儲存」會新增一筆。</p>
+            </section>
+
+            <!-- 滑桿輸入區 -->
             <section class="space-y-4 bg-white p-4 rounded-xl shadow-md border border-gray-100">
-                
+
                 <!-- 收縮壓 -->
                 <div class="space-y-1">
                     <div class="flex justify-between items-end">
@@ -164,14 +198,14 @@
 
                 <!-- 操作按鈕 -->
                 <div class="grid grid-cols-2 gap-3 pt-2">
-                    <button onclick="saveData()" class="col-span-2 py-3 bg-teal-600 text-white rounded-xl text-xl font-bold shadow-lg active:bg-teal-700 flex items-center justify-center gap-2">
-                        <i data-lucide="save" size="22"></i> 儲存數據
+                    <button onclick="saveData()" id="saveBtn" class="col-span-2 py-3 bg-teal-600 text-white rounded-xl text-xl font-bold shadow-lg active:bg-teal-700 flex items-center justify-center gap-2">
+                        <i data-lucide="save" size="22"></i> <span id="saveBtnText">儲存（新增）</span>
                     </button>
                     <button onclick="resetToDefault()" class="py-2 bg-gray-100 text-gray-600 rounded-xl font-bold border border-gray-200 flex items-center justify-center gap-1 text-sm">
                         <i data-lucide="rotate-ccw" size="14"></i> 重設建議值
                     </button>
-                    <button onclick="deleteData()" class="py-2 bg-white text-rose-600 rounded-xl font-bold border border-rose-200 flex items-center justify-center gap-1 text-sm">
-                        <i data-lucide="trash-2" size="14"></i> 刪除紀錄
+                    <button onclick="deleteData()" id="deleteBtn" class="py-2 bg-white text-rose-600 rounded-xl font-bold border border-rose-200 flex items-center justify-center gap-1 text-sm">
+                        <i data-lucide="trash-2" size="14"></i> <span id="deleteBtnText">刪除本筆</span>
                     </button>
                 </div>
             </section>
@@ -183,7 +217,7 @@
                 <h3 class="text-lg font-bold flex items-center gap-2 text-gray-800">
                     <i data-lucide="line-chart" class="text-teal-500"></i> 健康趨勢
                 </h3>
-                
+
                 <div class="grid grid-cols-2 gap-2 bg-gray-50 p-2 rounded-lg border border-gray-100">
                     <div>
                         <label class="block text-[10px] text-gray-500 mb-1">開始日期</label>
@@ -194,7 +228,22 @@
                         <input type="date" id="endDate" class="border border-gray-200 rounded p-1 text-sm w-full" onchange="renderChart()">
                     </div>
                 </div>
-    
+
+                <div class="bg-gray-50 p-2 rounded-lg border border-gray-100">
+                    <div class="flex items-center justify-between">
+                        <div class="text-[11px] text-gray-600 font-bold">顯示方式</div>
+                        <div class="flex gap-2">
+                            <label class="flex items-center gap-1 text-[11px] font-bold text-teal-700">
+                                <input type="radio" name="trendMode" value="avg" checked onchange="renderChart()"> 每日平均
+                            </label>
+                            <label class="flex items-center gap-1 text-[11px] font-bold text-gray-700">
+                                <input type="radio" name="trendMode" value="each" onchange="renderChart()"> 每次紀錄
+                            </label>
+                        </div>
+                    </div>
+                    <div class="mt-1 text-[10px] text-gray-400">每日平均：看長期趨勢更清楚；每次紀錄：看當天波動更細。</div>
+                </div>
+
                 <div class="relative w-full h-[300px]">
                     <canvas id="bpChart"></canvas>
                 </div>
@@ -210,14 +259,12 @@
                         <i data-lucide="download" size="12"></i> 匯出 CSV
                     </button>
                 </div>
-                <div id="historyList" class="divide-y divide-gray-100 max-h-[70vh] overflow-y-auto">
-                </div>
+                <div id="historyList" class="divide-y divide-gray-100 max-h-[70vh] overflow-y-auto"></div>
             </section>
         </div>
 
     </main>
 
-    <!-- 底部導航欄 (恢復舒適的大尺寸) -->
     <nav class="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 h-20 flex justify-around items-center shadow-2xl z-40 max-w-md mx-auto">
         <button onclick="switchPage('page-record')" class="nav-btn active" id="nav-record">
             <i data-lucide="pencil-line" size="28"></i>
@@ -240,17 +287,26 @@
         const DEFAULT_VALUES = { sys: 120, dia: 70, pulse: 70 };
         let currentPage = 'page-record';
 
+        const STORAGE_KEY = 'senior_health_records';
+
         // WHO 規範參考 (收縮壓 >= 140 或 舒張壓 >= 90)
         const THRESHOLD = { sys: 140, dia: 90 };
 
+        // 目前是否在編輯某一筆
+        let currentEntryId = null;
+
         window.onload = () => {
             lucide.createIcons();
+
             const today = getFormattedDate(new Date());
             document.getElementById('recordDate').value = today;
             document.getElementById('endDate').value = today;
-            const lastWeek = new Date();
-            lastWeek.setDate(lastWeek.getDate() - 14); 
-            document.getElementById('startDate').value = getFormattedDate(lastWeek);
+
+            const lastTwoWeeks = new Date();
+            lastTwoWeeks.setDate(lastTwoWeeks.getDate() - 14);
+            document.getElementById('startDate').value = getFormattedDate(lastTwoWeeks);
+
+            setTimeNow();
             switchPage('page-record');
             loadDataByDate();
         };
@@ -259,16 +315,50 @@
             currentPage = pageId;
             document.querySelectorAll('.page-content').forEach(p => p.classList.add('hidden'));
             document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+
             document.getElementById(pageId).classList.remove('hidden');
             const navId = 'nav-' + pageId.replace('page-', '');
             document.getElementById(navId).classList.add('active');
-            if (pageId === 'page-trends') setTimeout(renderChart, 100); 
+
+            if (pageId === 'page-trends') setTimeout(renderChart, 100);
             else if (pageId === 'page-history') renderHistoryList();
+
             lucide.createIcons();
             window.scrollTo({ top: 0, behavior: 'smooth' });
         }
 
         function getFormattedDate(date) { return date.toISOString().split('T')[0]; }
+
+        function pad2(n) { return String(n).padStart(2, '0'); }
+
+        function getNowTimeHHMM() {
+            const d = new Date();
+            return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+        }
+
+        function setTimeNow() {
+            document.getElementById('recordTime').value = getNowTimeHHMM();
+            if (!currentEntryId) updateActionButtons();
+            showToast('⏱️ 已填入目前時間');
+        }
+
+        function onTimeChanged() {
+            // 只要時間被改動就更新按鈕顯示
+            updateActionButtons();
+        }
+
+        function startNewEntry() {
+            currentEntryId = null;
+            document.getElementById('editingBadge').classList.add('hidden');
+            document.getElementById('recordTime').value = getNowTimeHHMM();
+            document.getElementById('sysRange').value = DEFAULT_VALUES.sys;
+            document.getElementById('diaRange').value = DEFAULT_VALUES.dia;
+            document.getElementById('pulseRange').value = DEFAULT_VALUES.pulse;
+            updateDisplay();
+            updateActionButtons();
+            renderDayEntries();
+            showToast('📝 已準備新增一筆');
+        }
 
         function changeDate(days) {
             const el = document.getElementById('recordDate');
@@ -296,137 +386,334 @@
             document.getElementById('pulseValue').innerText = pulse;
         }
 
-        function loadDataByDate() {
-            const dateStr = document.getElementById('recordDate').value;
-            const records = JSON.parse(localStorage.getItem('senior_health_records') || '{}');
-            const data = records[dateStr];
-            const today = getFormattedDate(new Date());
-            const statusEl = document.getElementById('dateStatus');
-            
-            if (dateStr === today) {
-                statusEl.innerText = "📅 今天";
-                statusEl.className = "text-center text-xs text-teal-600 mt-1 font-bold";
-            } else {
-                statusEl.innerText = data ? "✅ 已紀錄" : "📝 尚未輸入";
-                statusEl.className = data ? "text-center text-xs text-green-600 mt-1 font-medium" : "text-center text-xs text-gray-400 mt-1 font-medium";
+        function showToast(msg) {
+            const t = document.getElementById('toast');
+            t.innerText = msg;
+            t.className = 'show';
+            setTimeout(() => { t.className = ''; }, 3000);
+        }
+
+        function parseTimeToMinutes(t) {
+            if (!t || typeof t !== 'string' || !t.includes(':')) return 0;
+            const [hh, mm] = t.split(':').map(x => parseInt(x, 10));
+            return (hh * 60) + (mm || 0);
+        }
+
+        function makeId() {
+            return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+        }
+
+        function normalizeRecords(raw) {
+            const out = {};
+            let changed = false;
+
+            if (!raw || typeof raw !== 'object') return { records: {}, changed: true };
+
+            for (const date of Object.keys(raw)) {
+                const v = raw[date];
+
+                // 舊版：{sys,dia,pulse}
+                if (v && typeof v === 'object' && !Array.isArray(v) && ('sys' in v) && ('dia' in v) && ('pulse' in v)) {
+                    out[date] = [{
+                        id: makeId(),
+                        time: '08:00',
+                        sys: parseInt(v.sys, 10),
+                        dia: parseInt(v.dia, 10),
+                        pulse: parseInt(v.pulse, 10)
+                    }];
+                    changed = true;
+                    continue;
+                }
+
+                // 新版：[{id,time,sys,dia,pulse}, ...]
+                if (Array.isArray(v)) {
+                    const arr = v
+                        .filter(x => x && typeof x === 'object')
+                        .map(x => ({
+                            id: x.id || makeId(),
+                            time: x.time || '08:00',
+                            sys: parseInt(x.sys, 10),
+                            dia: parseInt(x.dia, 10),
+                            pulse: parseInt(x.pulse, 10)
+                        }))
+                        .filter(x => Number.isFinite(x.sys) && Number.isFinite(x.dia) && Number.isFinite(x.pulse));
+
+                    out[date] = arr;
+                    if (arr.length !== v.length) changed = true;
+                    if (v.some(x => !x.id || !x.time)) changed = true;
+                    continue;
+                }
+
+                // 其他異常資料：略過
+                changed = true;
             }
 
-            const values = data || DEFAULT_VALUES;
-            document.getElementById('sysRange').value = values.sys;
-            document.getElementById('diaRange').value = values.dia;
-            document.getElementById('pulseRange').value = values.pulse;
+            return { records: out, changed };
+        }
+
+        function readRecords() {
+            const raw = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+            const { records, changed } = normalizeRecords(raw);
+            if (changed) localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+            return records;
+        }
+
+        function writeRecords(records) {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+        }
+
+        function getEntriesOfDate(records, dateStr) {
+            const entries = (records[dateStr] || []).slice();
+            entries.sort((a, b) => parseTimeToMinutes(a.time) - parseTimeToMinutes(b.time));
+            return entries;
+        }
+
+        function computeAverages(entries) {
+            if (!entries || entries.length === 0) return null;
+            const sum = entries.reduce((acc, e) => {
+                acc.sys += e.sys; acc.dia += e.dia; acc.pulse += e.pulse;
+                return acc;
+            }, { sys: 0, dia: 0, pulse: 0 });
+
+            return {
+                sys: Math.round(sum.sys / entries.length),
+                dia: Math.round(sum.dia / entries.length),
+                pulse: Math.round(sum.pulse / entries.length),
+                count: entries.length
+            };
+        }
+
+        function getSelectedTrendMode() {
+            const el = document.querySelector('input[name="trendMode"]:checked');
+            return el ? el.value : 'avg';
+        }
+
+        function updateActionButtons() {
+            const saveText = document.getElementById('saveBtnText');
+            const delText = document.getElementById('deleteBtnText');
+
+            if (currentEntryId) {
+                saveText.innerText = '儲存（更新）';
+                delText.innerText = '刪除本筆';
+                document.getElementById('editingBadge').classList.remove('hidden');
+            } else {
+                saveText.innerText = '儲存（新增）';
+                delText.innerText = '刪除本日';
+                document.getElementById('editingBadge').classList.add('hidden');
+            }
+        }
+
+        function loadEntryToUI(entry) {
+            if (!entry) return;
+            document.getElementById('recordTime').value = entry.time || '08:00';
+            document.getElementById('sysRange').value = entry.sys;
+            document.getElementById('diaRange').value = entry.dia;
+            document.getElementById('pulseRange').value = entry.pulse;
             updateDisplay();
+        }
+
+        function findEntry(entries, entryId) {
+            return entries.find(e => e.id === entryId);
+        }
+
+        function selectEntry(entryId) {
+            const dateStr = document.getElementById('recordDate').value;
+            const records = readRecords();
+            const entries = getEntriesOfDate(records, dateStr);
+            const entry = findEntry(entries, entryId);
+            if (!entry) return;
+
+            currentEntryId = entryId;
+            loadEntryToUI(entry);
+            updateActionButtons();
+            renderDayEntries(entries);
+            showToast(`✏️ 編輯：${entry.time}`);
+        }
+
+        function loadDataByDate() {
+            const dateStr = document.getElementById('recordDate').value;
+            const records = readRecords();
+            const entries = getEntriesOfDate(records, dateStr);
+
+            const today = getFormattedDate(new Date());
+            const statusEl = document.getElementById('dateStatus');
+
+            if (dateStr === today) {
+                statusEl.innerText = '📅 今天';
+                statusEl.className = 'text-center text-xs text-teal-600 mt-1 font-bold';
+            } else {
+                statusEl.innerText = entries.length ? `✅ 已紀錄 ${entries.length} 筆` : '📝 尚未輸入';
+                statusEl.className = entries.length ? 'text-center text-xs text-green-600 mt-1 font-medium' : 'text-center text-xs text-gray-400 mt-1 font-medium';
+            }
+
+            // 進到某天時：
+            // - 若還有選取 id 且存在 -> 留在那筆
+            // - 否則選最後一筆（時間最晚）
+            if (entries.length === 0) {
+                currentEntryId = null;
+                document.getElementById('recordTime').value = getNowTimeHHMM();
+                document.getElementById('sysRange').value = DEFAULT_VALUES.sys;
+                document.getElementById('diaRange').value = DEFAULT_VALUES.dia;
+                document.getElementById('pulseRange').value = DEFAULT_VALUES.pulse;
+                updateDisplay();
+            } else {
+                let entry = null;
+                if (currentEntryId) {
+                    entry = findEntry(entries, currentEntryId);
+                }
+                if (!entry) {
+                    entry = entries[entries.length - 1];
+                    currentEntryId = entry.id;
+                }
+                loadEntryToUI(entry);
+            }
+
+            updateActionButtons();
+            renderDayEntries(entries);
+        }
+
+        function renderDayEntries(overrideEntries = null) {
+            const dateStr = document.getElementById('recordDate').value;
+            const listEl = document.getElementById('dayEntries');
+
+            const records = readRecords();
+            const entries = overrideEntries || getEntriesOfDate(records, dateStr);
+
+            const avg = computeAverages(entries);
+            const summaryEl = document.getElementById('daySummary');
+            summaryEl.innerText = avg ? `${avg.count} 筆｜平均 ${avg.sys}/${avg.dia}｜心跳 ${avg.pulse}` : '0 筆';
+
+            if (!entries.length) {
+                listEl.innerHTML = `<div class="p-4 text-center text-gray-400 text-sm">今天還沒有紀錄</div>`;
+                return;
+            }
+
+            listEl.innerHTML = entries.map(e => {
+                const isHigh = e.sys >= THRESHOLD.sys || e.dia >= THRESHOLD.dia;
+                const warningIcon = isHigh ? '<i data-lucide="alert-triangle" class="text-rose-600" size="14"></i>' : '<i data-lucide="check-circle-2" class="text-green-600" size="14"></i>';
+                const selectedClass = (currentEntryId === e.id) ? 'entry-selected' : '';
+
+                return `
+                    <button onclick="selectEntry('${e.id}')" class="w-full text-left p-3 rounded-xl border border-gray-100 shadow-sm bg-white active:bg-gray-50 transition ${selectedClass}">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center gap-2">
+                                ${warningIcon}
+                                <div class="text-lg font-black text-gray-800">${e.time}</div>
+                                ${isHigh ? '<span class="pill bg-rose-50 text-rose-700 border border-rose-100">偏高</span>' : '<span class="pill bg-green-50 text-green-700 border border-green-100">OK</span>'}
+                            </div>
+                            <div class="text-[10px] text-teal-600 font-bold">點選編輯 ></div>
+                        </div>
+                        <div class="mt-2 flex gap-2 items-center">
+                            <span class="px-2 py-0.5 bg-rose-50 text-rose-700 rounded text-xs font-bold border border-rose-100">收縮 ${e.sys}</span>
+                            <span class="px-2 py-0.5 bg-teal-50 text-teal-700 rounded text-xs font-bold border border-teal-100">舒張 ${e.dia}</span>
+                            <span class="px-2 py-0.5 bg-amber-50 text-amber-700 rounded text-xs font-bold border border-amber-100">心跳 ${e.pulse}</span>
+                        </div>
+                    </button>
+                `;
+            }).join('');
+
+            lucide.createIcons();
         }
 
         function saveData() {
             const dateStr = document.getElementById('recordDate').value;
+            const timeStr = (document.getElementById('recordTime').value || '').trim();
+
+            if (!timeStr) {
+                showToast('⚠️ 請先選擇時間');
+                return;
+            }
+
             const data = {
-                sys: parseInt(document.getElementById('sysRange').value),
-                dia: parseInt(document.getElementById('diaRange').value),
-                pulse: parseInt(document.getElementById('pulseRange').value)
+                sys: parseInt(document.getElementById('sysRange').value, 10),
+                dia: parseInt(document.getElementById('diaRange').value, 10),
+                pulse: parseInt(document.getElementById('pulseRange').value, 10)
             };
-            const records = JSON.parse(localStorage.getItem('senior_health_records') || '{}');
-            records[dateStr] = data;
-            localStorage.setItem('senior_health_records', JSON.stringify(records));
-            showToast("✅ 資料已儲存");
+
+            const records = readRecords();
+            const entries = getEntriesOfDate(records, dateStr);
+
+            // 若未在編輯，且同一時間已有資料：詢問是否覆蓋
+            if (!currentEntryId) {
+                const sameTime = entries.find(e => e.time === timeStr);
+                if (sameTime) {
+                    if (confirm(`時間 ${timeStr} 已有一筆紀錄，要覆蓋它嗎？`)) {
+                        currentEntryId = sameTime.id;
+                    } else {
+                        return;
+                    }
+                }
+            }
+
+            // 限制建議：一天常見 3 次（但允許更多）
+            if (!currentEntryId && entries.length >= 3) {
+                const ok = confirm(`今天已經有 ${entries.length} 筆了，仍要再新增一筆嗎？`);
+                if (!ok) return;
+            }
+
+            if (currentEntryId) {
+                const idx = entries.findIndex(e => e.id === currentEntryId);
+                if (idx >= 0) {
+                    entries[idx] = { ...entries[idx], time: timeStr, ...data };
+                    showToast('✅ 已更新');
+                } else {
+                    // 萬一找不到，就當作新增
+                    entries.push({ id: makeId(), time: timeStr, ...data });
+                    currentEntryId = entries[entries.length - 1].id;
+                    showToast('✅ 已新增');
+                }
+            } else {
+                const newEntry = { id: makeId(), time: timeStr, ...data };
+                entries.push(newEntry);
+                currentEntryId = newEntry.id;
+                showToast('✅ 已新增');
+            }
+
+            // 寫回
+            records[dateStr] = entries;
+            writeRecords(records);
+
+            updateActionButtons();
+            renderDayEntries(entries);
             loadDataByDate();
         }
 
         function deleteData() {
             const dateStr = document.getElementById('recordDate').value;
-            const records = JSON.parse(localStorage.getItem('senior_health_records') || '{}');
-            if (records[dateStr] && confirm('確定刪除這筆紀錄嗎？')) {
-                delete records[dateStr];
-                localStorage.setItem('senior_health_records', JSON.stringify(records));
-                showToast("🗑️ 已移除紀錄");
-                loadDataByDate();
-            }
-        }
+            const records = readRecords();
+            const entries = getEntriesOfDate(records, dateStr);
 
-        function showToast(msg) {
-            const t = document.getElementById("toast");
-            t.innerText = msg;
-            t.className = "show";
-            setTimeout(() => { t.className = ""; }, 3000);
-        }
-
-        function renderChart() {
-            if (currentPage !== 'page-trends') return;
-            const start = document.getElementById('startDate').value;
-            const end = document.getElementById('endDate').value;
-            const records = JSON.parse(localStorage.getItem('senior_health_records') || '{}');
-            const sortedDates = Object.keys(records).filter(d => d >= start && d <= end).sort();
-            
-            const sysData = sortedDates.map(d => records[d].sys);
-            const diaData = sortedDates.map(d => records[d].dia);
-            const pulseData = sortedDates.map(d => records[d].pulse);
-
-            const ctx = document.getElementById('bpChart').getContext('2d');
-            if (bpChart) bpChart.destroy();
-
-            bpChart = new Chart(ctx, {
-                type: 'line',
-                data: {
-                    labels: sortedDates.map(d => d.substring(5)),
-                    datasets: [
-                        { label: '收縮壓', data: sysData, borderColor: '#e11d48', backgroundColor: '#e11d48', tension: 0.3, pointRadius: 4 },
-                        { label: '舒張壓', data: diaData, borderColor: '#0d9488', backgroundColor: '#0d9488', tension: 0.3, pointRadius: 4 },
-                        { label: '心跳', data: pulseData, borderColor: '#d97706', backgroundColor: '#d97706', tension: 0.3, pointRadius: 4 }
-                    ]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: { position: 'top', labels: { font: { size: 12 }, usePointStyle: true } }
-                    }
-                }
-            });
-        }
-
-        function renderHistoryList() {
-            const listEl = document.getElementById('historyList');
-            const records = JSON.parse(localStorage.getItem('senior_health_records') || '{}');
-            const sortedDates = Object.keys(records).sort().reverse();
-            
-            if (sortedDates.length === 0) {
-                listEl.innerHTML = `<div class="p-10 text-center text-gray-400">尚無歷史數據</div>`;
+            if (!entries.length) {
+                showToast('沒有可刪除的資料');
                 return;
             }
 
-            listEl.innerHTML = sortedDates.map(date => {
-                const d = records[date];
-                const isHigh = d.sys >= THRESHOLD.sys || d.dia >= THRESHOLD.dia;
-                const bgColor = isHigh ? 'background-color: var(--warning-bg);' : 'background-color: white;';
-                const warningIcon = isHigh ? '<i data-lucide="alert-triangle" class="text-rose-600 mr-1" size="14"></i>' : '';
+            if (currentEntryId) {
+                const entry = entries.find(e => e.id === currentEntryId);
+                if (!entry) {
+                    currentEntryId = null;
+                    updateActionButtons();
+                    return;
+                }
 
-                return `
-                    <div class="p-4 flex justify-between items-center active:bg-gray-50 border-b border-gray-100 transition-colors" 
-                         style="${bgColor}" onclick="jumpToDate('${date}')">
-                        <div class="space-y-1">
-                            <div class="text-lg font-bold text-gray-800 flex items-center">
-                                ${warningIcon} ${date}
-                            </div>
-                            <div class="flex gap-2">
-                                <span class="px-2 py-0.5 bg-rose-50 text-rose-700 rounded text-xs font-bold border border-rose-100">${d.sys}</span>
-                                <span class="px-2 py-0.5 bg-teal-50 text-teal-700 rounded text-xs font-bold border border-teal-100">${d.dia}</span>
-                            </div>
-                        </div>
-                        <div class="text-right">
-                            <div class="text-amber-600 font-black text-xl">${d.pulse} <span class="text-[10px] font-normal text-gray-400">bpm</span></div>
-                            <div class="text-[10px] text-teal-600 font-bold">點擊編輯 ></div>
-                        </div>
-                    </div>
-                `;
-            }).join('');
-            lucide.createIcons();
-        }
+                if (!confirm(`確定刪除 ${entry.time} 這筆紀錄嗎？`)) return;
+                const next = entries.filter(e => e.id !== currentEntryId);
+                records[dateStr] = next;
+                if (next.length === 0) delete records[dateStr];
+                writeRecords(records);
 
-        function jumpToDate(date) {
-            document.getElementById('recordDate').value = date;
-            switchPage('page-record');
+                currentEntryId = null;
+                showToast('🗑️ 已刪除本筆');
+                loadDataByDate();
+                return;
+            }
+
+            // 未選取：刪除本日
+            if (!confirm(`確定刪除 ${dateStr} 的全部 ${entries.length} 筆紀錄嗎？`)) return;
+            delete records[dateStr];
+            writeRecords(records);
+            showToast('🗑️ 已刪除本日');
             loadDataByDate();
-            showToast("已載入 " + date);
         }
 
         function resetToDefault() {
@@ -434,30 +721,158 @@
             document.getElementById('diaRange').value = DEFAULT_VALUES.dia;
             document.getElementById('pulseRange').value = DEFAULT_VALUES.pulse;
             updateDisplay();
-            showToast("已重設為建議值");
+            showToast('已重設為建議值');
+        }
+
+        function renderChart() {
+            if (currentPage !== 'page-trends') return;
+
+            const start = document.getElementById('startDate').value;
+            const end = document.getElementById('endDate').value;
+            const mode = getSelectedTrendMode();
+
+            const records = readRecords();
+            const dates = Object.keys(records).filter(d => d >= start && d <= end).sort();
+
+            let labels = [];
+            let sysData = [];
+            let diaData = [];
+            let pulseData = [];
+
+            if (mode === 'avg') {
+                labels = dates.map(d => d.substring(5));
+                dates.forEach(d => {
+                    const entries = getEntriesOfDate(records, d);
+                    const avg = computeAverages(entries);
+                    if (!avg) return;
+                    sysData.push(avg.sys);
+                    diaData.push(avg.dia);
+                    pulseData.push(avg.pulse);
+                });
+            } else {
+                // 每次紀錄
+                const points = [];
+                dates.forEach(d => {
+                    const entries = getEntriesOfDate(records, d);
+                    entries.forEach(e => {
+                        points.push({
+                            label: `${d.substring(5)} ${e.time}`,
+                            sys: e.sys,
+                            dia: e.dia,
+                            pulse: e.pulse,
+                            t: (d + 'T' + (e.time || '00:00'))
+                        });
+                    });
+                });
+
+                points.sort((a, b) => (a.t < b.t ? -1 : a.t > b.t ? 1 : 0));
+                labels = points.map(p => p.label);
+                sysData = points.map(p => p.sys);
+                diaData = points.map(p => p.dia);
+                pulseData = points.map(p => p.pulse);
+            }
+
+            const ctx = document.getElementById('bpChart').getContext('2d');
+            if (bpChart) bpChart.destroy();
+
+            bpChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels,
+                    datasets: [
+                        { label: '收縮壓', data: sysData, borderColor: '#e11d48', backgroundColor: '#e11d48', tension: 0.3, pointRadius: mode === 'each' ? 3 : 4 },
+                        { label: '舒張壓', data: diaData, borderColor: '#0d9488', backgroundColor: '#0d9488', tension: 0.3, pointRadius: mode === 'each' ? 3 : 4 },
+                        { label: '心跳', data: pulseData, borderColor: '#d97706', backgroundColor: '#d97706', tension: 0.3, pointRadius: mode === 'each' ? 3 : 4 }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { position: 'top', labels: { font: { size: 12 }, usePointStyle: true } }
+                    },
+                    scales: {
+                        x: { ticks: { maxRotation: 0, autoSkip: true } }
+                    }
+                }
+            });
+        }
+
+        function renderHistoryList() {
+            const listEl = document.getElementById('historyList');
+            const records = readRecords();
+            const sortedDates = Object.keys(records).sort().reverse();
+
+            if (sortedDates.length === 0) {
+                listEl.innerHTML = `<div class="p-10 text-center text-gray-400">尚無歷史數據</div>`;
+                return;
+            }
+
+            listEl.innerHTML = sortedDates.map(date => {
+                const entries = getEntriesOfDate(records, date);
+                const avg = computeAverages(entries);
+
+                const anyHigh = entries.some(e => e.sys >= THRESHOLD.sys || e.dia >= THRESHOLD.dia);
+                const bgColor = anyHigh ? 'background-color: var(--warning-bg);' : 'background-color: white;';
+                const warningIcon = anyHigh ? '<i data-lucide="alert-triangle" class="text-rose-600 mr-1" size="14"></i>' : '';
+
+                const last = entries.length ? entries[entries.length - 1] : null;
+                const sub = avg ? `平均 ${avg.sys}/${avg.dia}｜心跳 ${avg.pulse}` : '';
+                const lastTxt = last ? `最新 ${last.time}` : '';
+
+                return `
+                    <div class="p-4 flex justify-between items-center active:bg-gray-50 border-b border-gray-100 transition-colors" style="${bgColor}" onclick="jumpToDate('${date}')">
+                        <div class="space-y-1">
+                            <div class="text-lg font-bold text-gray-800 flex items-center">${warningIcon} ${date}</div>
+                            <div class="text-[11px] text-gray-600 font-bold">${entries.length} 筆｜${sub}</div>
+                        </div>
+                        <div class="text-right">
+                            <div class="text-teal-700 font-black text-sm">${lastTxt}</div>
+                            <div class="text-[10px] text-teal-600 font-bold">點擊查看 ></div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            lucide.createIcons();
+        }
+
+        function jumpToDate(date) {
+            document.getElementById('recordDate').value = date;
+            switchPage('page-record');
+            // 換日後先清空選取，讓它自動選最新一筆
+            currentEntryId = null;
+            loadDataByDate();
+            showToast('已載入 ' + date);
         }
 
         function exportToCSV() {
-            const records = JSON.parse(localStorage.getItem('senior_health_records') || '{}');
+            const records = readRecords();
             const sortedDates = Object.keys(records).sort();
             if (sortedDates.length === 0) {
-                showToast("無資料可匯出");
+                showToast('無資料可匯出');
                 return;
             }
-            let csvContent = "日期,收縮壓,舒張壓,心跳\n";
+
+            let csvContent = '日期,時間,收縮壓,舒張壓,心跳\n';
+
             sortedDates.forEach(date => {
-                const d = records[date];
-                csvContent += `${date},${d.sys},${d.dia},${d.pulse}\n`;
+                const entries = getEntriesOfDate(records, date);
+                entries.forEach(e => {
+                    csvContent += `${date},${e.time},${e.sys},${e.dia},${e.pulse}\n`;
+                });
             });
+
             const BOM = "\uFEFF";
             const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
-            const link = document.createElement("a");
+            const link = document.createElement('a');
             const url = URL.createObjectURL(blob);
-            link.setAttribute("href", url);
-            link.setAttribute("download", `血壓紀錄小幫手匯出_${new Date().toISOString().split('T')[0]}.csv`);
+            link.setAttribute('href', url);
+            link.setAttribute('download', `血壓紀錄小幫手匯出_${new Date().toISOString().split('T')[0]}.csv`);
             link.click();
-            showToast("✅ CSV 匯出成功");
+            showToast('✅ CSV 匯出成功');
         }
+
     </script>
 
     <!-- Service Worker 註冊（PWA 離線快取） -->
