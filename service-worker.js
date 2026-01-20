@@ -4,7 +4,7 @@
   - 同源資源採 Cache First；跨網域（CDN）採 Network First + 快取
 */
 
-const CACHE_NAME = 'bp-pwa-v3';
+const CACHE_NAME = 'bp-pwa-v4';
 const APP_SHELL = [
   './',
   './index.html',
