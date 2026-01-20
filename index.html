@@ -123,15 +123,17 @@
 
                 <p id="dateStatus" class="text-center text-xs text-teal-600 mt-1 font-medium">今天</p>
 
-                <div class="mt-2 grid grid-cols-3 gap-2 items-end">
-                    <div class="col-span-2">
-                        <label class="block text-[10px] text-gray-500 mb-1">紀錄時間（24 小時制）</label>
-                        <input type="time" id="recordTime" class="w-full border border-gray-200 rounded-xl p-2 text-lg font-black text-center text-teal-800" onchange="onTimeChanged()">
-                        <div class="text-[10px] text-gray-400 mt-1">時間會自動帶入目前時間；若要補登可自行調整。</div>
+                <div class="mt-2">
+                    <div class="grid grid-cols-3 gap-2 items-end">
+                        <div class="col-span-2">
+                            <label class="block text-[10px] text-gray-500 mb-1">紀錄時間（24 小時制）</label>
+                            <input type="time" id="recordTime" class="w-full border border-gray-200 rounded-xl p-2 text-lg font-black text-center text-teal-800" onchange="onTimeChanged()">
+                        </div>
+                        <div class="col-span-1 flex items-end justify-center">
+                            <button onclick="setNowTime()" class="w-[60%] py-2 bg-teal-600 text-white rounded-xl font-bold shadow text-sm active:bg-teal-700">目前</button>
+                        </div>
                     </div>
-                    <div class="col-span-1 flex flex-col gap-2">
-                        <button onclick="startNewEntry()" class="py-2 bg-teal-600 text-white rounded-xl font-bold shadow text-sm active:bg-teal-700">新增一筆</button>
-                    </div>
+                    <div class="text-[10px] text-gray-400 mt-1">開啟 APP 時會帶入當下時間；需要重新抓目前時間請按「目前」。若要補登可自行調整。</div>
                 </div>
             </section>
 
@@ -145,7 +147,7 @@
                     <span id="editingBadge" class="text-[11px] px-2 py-1 rounded-full bg-teal-50 text-teal-700 font-bold border border-teal-100 hidden">編輯中</span>
                 </div>
                 <div id="dayEntries" class="mt-3 space-y-2"></div>
-                <p class="text-[10px] text-gray-400 mt-2">提示：點選某一筆可編輯；未選取時按「儲存」會新增一筆。</p>
+                <p class="text-[10px] text-gray-400 mt-2">提示：點選某一筆可編輯；未選取時按「儲存」會新增一筆；按「目前」可快速帶入當下時間。</p>
             </section>
 
             <!-- 滑桿輸入區 -->
@@ -295,7 +297,7 @@
         // 目前是否在編輯某一筆
         let currentEntryId = null;
 
-        // 「時間」是否被使用者手動調整過（若沒有，會自動帶入目前時間）
+        // 「時間」是否被使用者手動調整過（補登/手動改時間）
         let timeTouched = false;
 
         window.onload = () => {
@@ -309,22 +311,8 @@
             lastTwoWeeks.setDate(lastTwoWeeks.getDate() - 14);
             document.getElementById('startDate').value = getFormattedDate(lastTwoWeeks);
 
-            // 預設時間：帶入目前時間（不需先按任何按鈕）
+            // 開啟 APP 時：直接把「當下時間」帶入紀錄時間（不會自動跳動）
             setTimeNow(true);
-
-            // 只要是「新增模式」且使用者尚未手動改時間，就持續自動更新時間
-            setInterval(() => {
-                if (!currentEntryId && !timeTouched) {
-                    setTimeNow(true);
-                }
-            }, 15000);
-
-            // 從背景回到前景時，也更新一次時間
-            document.addEventListener('visibilitychange', () => {
-                if (!document.hidden && !currentEntryId && !timeTouched) {
-                    setTimeNow(true);
-                }
-            });
             switchPage('page-record');
             loadDataByDate();
         };
@@ -360,8 +348,20 @@
             // 不主動跳提示，避免干擾
         }
 
+        // 「目前」：一鍵帶入當下時間
+        // 需求：不需要先儲存一次時間；按下即可把時間設為現在，並回到「新增模式」
+        function setNowTime() {
+            currentEntryId = null;
+            timeTouched = false;
+            document.getElementById('editingBadge').classList.add('hidden');
+            setTimeNow(true);
+            updateActionButtons();
+            renderDayEntries();
+            showToast('⏱ 已更新為目前時間');
+        }
+
         function onTimeChanged() {
-            // 使用者手動改動時間：視為「補登/調整」；之後不再自動覆蓋
+            // 使用者手動改動時間：視為「補登/調整」
             timeTouched = true;
             updateActionButtons();
         }
@@ -640,11 +640,6 @@
 
         function saveData() {
             const dateStr = document.getElementById('recordDate').value;
-            // 新增模式：若使用者沒有手動調整時間，儲存時以「當下」為準
-            if (!currentEntryId && !timeTouched) {
-                setTimeNow(true);
-            }
-
             const timeStr = (document.getElementById('recordTime').value || '').trim() || getNowTimeHHMM();
 
             const data = {
