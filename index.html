@@ -96,6 +96,16 @@
             outline: 2px solid rgba(13, 148, 136, 0.35);
             background-color: rgba(13, 148, 136, 0.04);
         }
+
+        /* 獎牌（連續紀錄） */
+        .medal-img {
+            width: 56px;
+            height: 56px;
+        }
+        .medal-locked {
+            filter: grayscale(1);
+            opacity: 0.35;
+        }
     </style>
 </head>
 <body class="max-w-md mx-auto min-h-screen pb-24 bg-gray-50">
@@ -249,6 +259,18 @@
                 <div class="relative w-full h-[300px]">
                     <canvas id="bpChart"></canvas>
                 </div>
+
+                <div id="medalPanel" class="mt-3 border-t border-gray-100 pt-3">
+                    <div class="flex items-center justify-between">
+                        <div class="text-sm font-bold text-gray-700 flex items-center gap-2">
+                            <i data-lucide="award" class="text-amber-500" size="18"></i> 連續紀錄獎牌
+                        </div>
+                        <div id="streakText" class="text-sm font-black text-teal-700"></div>
+                    </div>
+                    <div id="medalRow" class="mt-3 flex flex-wrap gap-2 justify-center items-center"></div>
+                    <div id="medalHint" class="text-[10px] text-gray-400 mt-2 text-center"></div>
+                </div>
+
             </section>
         </div>
 
@@ -502,6 +524,135 @@
                 count: entries.length
             };
         }
+
+
+function parseDateLocal(dateStr) {
+    const [y, m, d] = (dateStr || '').split('-').map(x => parseInt(x, 10));
+    if (!y || !m || !d) return new Date();
+    return new Date(y, m - 1, d);
+}
+
+function formatDateLocal(d) {
+    const y = d.getFullYear();
+    const m = pad2(d.getMonth() + 1);
+    const day = pad2(d.getDate());
+    return `${y}-${m}-${day}`;
+}
+
+function hasRecordOn(records, dateStr) {
+    const arr = records[dateStr];
+    return Array.isArray(arr) && arr.length > 0;
+}
+
+function getStreakInfo(records) {
+    const todayStr = formatDateLocal(new Date());
+    const todayHas = hasRecordOn(records, todayStr);
+
+    // 找出「最近一次」有紀錄的日期（<= 今天）
+    let lastDate = null;
+    let cursor = parseDateLocal(todayStr);
+    for (let i = 0; i < 3650; i++) { // 最多往回找 10 年（保險）
+        const ds = formatDateLocal(cursor);
+        if (hasRecordOn(records, ds)) { lastDate = ds; break; }
+        cursor.setDate(cursor.getDate() - 1);
+    }
+
+    if (!lastDate) {
+        return { streakDays: 0, weeks: 0, lastDateStr: null, todayHas: false };
+    }
+
+    // 從 lastDate 往回算連續天數
+    let streak = 0;
+    let d = parseDateLocal(lastDate);
+    for (let i = 0; i < 3650; i++) {
+        const ds = formatDateLocal(d);
+        if (hasRecordOn(records, ds)) {
+            streak++;
+            d.setDate(d.getDate() - 1);
+        } else {
+            break;
+        }
+    }
+
+    return { streakDays: streak, weeks: Math.floor(streak / 7), lastDateStr: lastDate, todayHas };
+}
+
+function computeMedalState(weeks) {
+    // 規則（依我們前面約定）：
+    // 1) 連續 7 天 = 1 週獎牌（同款可累加）
+    // 2) 達到 4 週（含）後，升級到下一種獎牌，並在新獎牌重新累加 1～4
+    if (!weeks || weeks <= 0) return { typeIndex: null, count: 0 };
+
+    let typeIndex = 0;
+    let count = weeks;
+
+    if (weeks >= 4) {
+        typeIndex = 1 + Math.floor((weeks - 4) / 4);
+        count = 1 + ((weeks - 4) % 4);
+    }
+
+    // 最多 6 種（1~6）
+    typeIndex = Math.min(typeIndex, 5);
+    count = Math.min(count, 4); // 版面上最多顯示 4 枚（避免太擠）
+    return { typeIndex, count };
+}
+
+function updateMedalUI() {
+    if (currentPage !== 'page-trends') return;
+
+    const records = readRecords();
+    const info = getStreakInfo(records);
+
+    const streakTextEl = document.getElementById('streakText');
+    const rowEl = document.getElementById('medalRow');
+    const hintEl = document.getElementById('medalHint');
+
+    if (!streakTextEl || !rowEl || !hintEl) return;
+
+    if (info.streakDays <= 0) {
+        streakTextEl.innerText = '';
+        rowEl.innerHTML = '';
+        hintEl.innerText = '從今天開始量血壓，連續 7 天就能拿到第一個獎牌！';
+        lucide.createIcons();
+        return;
+    }
+
+    // 顯示連續天數
+    streakTextEl.innerText = `連續 ${info.streakDays} 天`;
+
+    const weeks = info.weeks;
+    const medalState = computeMedalState(weeks);
+
+    if (weeks <= 0 || medalState.typeIndex === null) {
+        rowEl.innerHTML = '';
+        const remain = 7 - (info.streakDays % 7);
+        const remainDays = (info.streakDays < 7) ? (7 - info.streakDays) : remain;
+        hintEl.innerText = `再連續 ${remainDays} 天就能拿到第一個獎牌！` + (info.todayHas ? '' : '（今天還沒量，量一次就能延續連續！）');
+        lucide.createIcons();
+        return;
+    }
+
+    const medalSrc = `medals/medal-${medalState.typeIndex + 1}.png`;
+    const medalsHtml = Array.from({ length: medalState.count }).map(() =>
+        `<img src="${medalSrc}" alt="獎牌" class="medal-img">`
+    ).join('');
+
+    // 也把「下一種」獎牌做成灰階預告（有目標感）
+    const nextType = Math.min(medalState.typeIndex + 1, 5);
+    const nextSrc = `medals/medal-${nextType + 1}.png`;
+    const showLocked = (medalState.typeIndex < 5);
+
+    rowEl.innerHTML = medalsHtml + (showLocked ? `<img src="${nextSrc}" alt="下一種獎牌" class="medal-img medal-locked">` : '');
+
+    // 提示文字：距離下一週/下一枚獎牌還差幾天
+    const daysIntoWeek = info.streakDays % 7;
+    const daysToNextWeek = (daysIntoWeek === 0) ? 7 : (7 - daysIntoWeek);
+    const baseHint = `已達成 ${weeks} 週！再連續 ${daysToNextWeek} 天可再多拿一枚（或升級）獎牌。`;
+    hintEl.innerText = baseHint + (info.todayHas ? '' : '（今天還沒量，量一次就能延續連續！）');
+
+    lucide.createIcons();
+}
+
 
         function getSelectedTrendMode() {
             const el = document.querySelector('input[name="trendMode"]:checked');
@@ -792,6 +943,9 @@
 
             const ctx = document.getElementById('bpChart').getContext('2d');
             if (bpChart) bpChart.destroy();
+
+            // 更新獎牌（連續紀錄）
+            updateMedalUI();
 
             bpChart = new Chart(ctx, {
                 type: 'line',
