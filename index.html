@@ -99,8 +99,8 @@
 
         /* 獎牌（連續紀錄） */
         .medal-img {
-            width: 56px;
-            height: 56px;
+            width: clamp(56px, 16vw, 84px);
+            height: clamp(56px, 16vw, 84px);
         }
         .medal-locked {
             filter: grayscale(1);
@@ -267,7 +267,7 @@
                         </div>
                         <div id="streakText" class="text-sm font-black text-teal-700"></div>
                     </div>
-                    <div id="medalRow" class="mt-3 flex flex-wrap gap-2 justify-center items-center"></div>
+                    <div id="medalRow" class="mt-3 grid grid-cols-5 gap-x-3 gap-y-3 justify-items-center items-center"></div>
                     <div id="medalHint" class="text-[10px] text-gray-400 mt-2 text-center"></div>
                 </div>
 
@@ -577,26 +577,6 @@ function getStreakInfo(records) {
     return { streakDays: streak, weeks: Math.floor(streak / 7), lastDateStr: lastDate, todayHas };
 }
 
-function computeMedalState(weeks) {
-    // 規則（依我們前面約定）：
-    // 1) 連續 7 天 = 1 週獎牌（同款可累加）
-    // 2) 達到 4 週（含）後，升級到下一種獎牌，並在新獎牌重新累加 1～4
-    if (!weeks || weeks <= 0) return { typeIndex: null, count: 0 };
-
-    let typeIndex = 0;
-    let count = weeks;
-
-    if (weeks >= 4) {
-        typeIndex = 1 + Math.floor((weeks - 4) / 4);
-        count = 1 + ((weeks - 4) % 4);
-    }
-
-    // 最多 6 種（1~6）
-    typeIndex = Math.min(typeIndex, 5);
-    count = Math.min(count, 4); // 版面上最多顯示 4 枚（避免太擠）
-    return { typeIndex, count };
-}
-
 function updateMedalUI() {
     if (currentPage !== 'page-trends') return;
 
@@ -609,46 +589,44 @@ function updateMedalUI() {
 
     if (!streakTextEl || !rowEl || !hintEl) return;
 
-    if (info.streakDays <= 0) {
+    const MAX_MEDALS = 10;
+    const weeks = Math.floor((info.streakDays || 0) / 7);
+    const earned = Math.min(weeks, MAX_MEDALS);
+
+    // 顯示連續天數（含週數）
+    if (info.streakDays > 0) {
+        streakTextEl.innerText = `連續 ${info.streakDays} 天（${weeks} 週）`;
+    } else {
         streakTextEl.innerText = '';
-        rowEl.innerHTML = '';
-        hintEl.innerText = '從今天開始量血壓，連續 7 天就能拿到第一個獎牌！';
-        lucide.createIcons();
-        return;
     }
 
-    // 顯示連續天數
-    streakTextEl.innerText = `連續 ${info.streakDays} 天`;
+    // 還沒連續滿一週：先顯示全灰階 + 鼓勵
+    if (!info.streakDays || weeks <= 0) {
+        rowEl.innerHTML = Array.from({ length: MAX_MEDALS }).map((_, i) =>
+            `<img src="medals/medal-${i + 1}.png" alt="獎牌" class="medal-img medal-locked">`
+        ).join('');
 
-    const weeks = info.weeks;
-    const medalState = computeMedalState(weeks);
-
-    if (weeks <= 0 || medalState.typeIndex === null) {
-        rowEl.innerHTML = '';
-        const remain = 7 - (info.streakDays % 7);
-        const remainDays = (info.streakDays < 7) ? (7 - info.streakDays) : remain;
+        const remainDays = 7 - (info.streakDays || 0);
         hintEl.innerText = `再連續 ${remainDays} 天就能拿到第一個獎牌！` + (info.todayHas ? '' : '（今天還沒量，量一次就能延續連續！）');
         lucide.createIcons();
         return;
     }
 
-    const medalSrc = `medals/medal-${medalState.typeIndex + 1}.png`;
-    const medalsHtml = Array.from({ length: medalState.count }).map(() =>
-        `<img src="${medalSrc}" alt="獎牌" class="medal-img">`
-    ).join('');
+    // 連續滿一週以上：依獲得數量亮起，剩下灰階
+    rowEl.innerHTML = Array.from({ length: MAX_MEDALS }).map((_, i) => {
+        const locked = (i >= earned);
+        return `<img src="medals/medal-${i + 1}.png" alt="獎牌" class="medal-img ${locked ? 'medal-locked' : ''}">`;
+    }).join('');
 
-    // 也把「下一種」獎牌做成灰階預告（有目標感）
-    const nextType = Math.min(medalState.typeIndex + 1, 5);
-    const nextSrc = `medals/medal-${nextType + 1}.png`;
-    const showLocked = (medalState.typeIndex < 5);
-
-    rowEl.innerHTML = medalsHtml + (showLocked ? `<img src="${nextSrc}" alt="下一種獎牌" class="medal-img medal-locked">` : '');
-
-    // 提示文字：距離下一週/下一枚獎牌還差幾天
+    // 提示文字：距離下一週還差幾天；並顯示進度
     const daysIntoWeek = info.streakDays % 7;
     const daysToNextWeek = (daysIntoWeek === 0) ? 7 : (7 - daysIntoWeek);
-    const baseHint = `已達成 ${weeks} 週！再連續 ${daysToNextWeek} 天可再多拿一枚（或升級）獎牌。`;
-    hintEl.innerText = baseHint + (info.todayHas ? '' : '（今天還沒量，量一次就能延續連續！）');
+
+    if (earned >= MAX_MEDALS) {
+        hintEl.innerText = `太棒了！你已獲得 ${MAX_MEDALS}/${MAX_MEDALS} 枚獎牌，習慣已經養成囉～` + (info.todayHas ? '' : '（今天還沒量，量一次就能延續連續！）');
+    } else {
+        hintEl.innerText = `已獲得 ${earned}/${MAX_MEDALS} 枚獎牌。再連續 ${daysToNextWeek} 天可獲得下一枚！` + (info.todayHas ? '' : '（今天還沒量，量一次就能延續連續！）');
+    }
 
     lucide.createIcons();
 }

@@ -4,7 +4,7 @@
   - 同源資源採 Cache First；跨網域（CDN）採 Network First + 快取
 */
 
-const CACHE_NAME = 'bp-pwa-v6';
+const CACHE_NAME = 'bp-pwa-v7';
 const APP_SHELL = [
   './',
   './index.html',
@@ -18,7 +18,11 @@ const APP_SHELL = [
   './medals/medal-3.png',
   './medals/medal-4.png',
   './medals/medal-5.png',
-  './medals/medal-6.png'
+  './medals/medal-6.png',
+  './medals/medal-7.png',
+  './medals/medal-8.png',
+  './medals/medal-9.png',
+  './medals/medal-10.png',
 ];
 
 self.addEventListener('install', (event) => {
