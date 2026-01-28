@@ -287,9 +287,6 @@
                             <i data-lucide="file-up" size="12"></i> 匯入 JSON
                         </button>
                         <input id="importJsonInput" type="file" accept="application/json,.json" class="hidden" onchange="importFromJSONFile(event)">
-                        <button onclick="exportToCSV()" class="px-3 py-1 bg-teal-600 text-white rounded-lg text-xs font-bold flex items-center gap-1 shadow">
-                            <i data-lucide="download" size="12"></i> 匯出 CSV
-                        </button>
                     </div>
                 </div>
                 <div id="historyList" class="divide-y divide-gray-100 max-h-[70vh] overflow-y-auto"></div>
@@ -1126,35 +1123,6 @@ function updateMedalUI() {
             reader.onerror = () => showToast('❌ 讀取檔案失敗');
             reader.readAsText(file, 'utf-8');
         }
-
-
-        function exportToCSV() {
-            const records = readRecords();
-            const sortedDates = Object.keys(records).sort();
-            if (sortedDates.length === 0) {
-                showToast('無資料可匯出');
-                return;
-            }
-
-            let csvContent = '日期,時間,收縮壓,舒張壓,心跳\n';
-
-            sortedDates.forEach(date => {
-                const entries = getEntriesOfDate(records, date);
-                entries.forEach(e => {
-                    csvContent += `${date},${e.time},${e.sys},${e.dia},${e.pulse}\n`;
-                });
-            });
-
-            const BOM = "\uFEFF";
-            const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
-            const link = document.createElement('a');
-            const url = URL.createObjectURL(blob);
-            link.setAttribute('href', url);
-            link.setAttribute('download', `血壓紀錄小幫手匯出_${new Date().toISOString().split('T')[0]}.csv`);
-            link.click();
-            showToast('✅ CSV 匯出成功');
-        }
-
     </script>
 
     <!-- Service Worker 註冊（PWA 離線快取） -->
