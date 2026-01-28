@@ -279,9 +279,18 @@
             <section class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
                 <div class="bg-gray-50 p-3 border-b border-gray-100 flex justify-between items-center">
                     <h3 class="font-bold text-gray-700 text-sm">歷史紀錄列表</h3>
-                    <button onclick="exportToCSV()" class="px-3 py-1 bg-teal-600 text-white rounded-lg text-xs font-bold flex items-center gap-1 shadow">
-                        <i data-lucide="download" size="12"></i> 匯出 CSV
-                    </button>
+                    <div class="flex items-center gap-2">
+                        <button onclick="exportToJSON()" class="px-3 py-1 bg-slate-700 text-white rounded-lg text-xs font-bold flex items-center gap-1 shadow">
+                            <i data-lucide="file-down" size="12"></i> 匯出 JSON
+                        </button>
+                        <button onclick="triggerImportJSON()" class="px-3 py-1 bg-indigo-600 text-white rounded-lg text-xs font-bold flex items-center gap-1 shadow">
+                            <i data-lucide="file-up" size="12"></i> 匯入 JSON
+                        </button>
+                        <input id="importJsonInput" type="file" accept="application/json,.json" class="hidden" onchange="importFromJSONFile(event)">
+                        <button onclick="exportToCSV()" class="px-3 py-1 bg-teal-600 text-white rounded-lg text-xs font-bold flex items-center gap-1 shadow">
+                            <i data-lucide="download" size="12"></i> 匯出 CSV
+                        </button>
+                    </div>
                 </div>
                 <div id="historyList" class="divide-y divide-gray-100 max-h-[70vh] overflow-y-auto"></div>
             </section>
@@ -995,6 +1004,129 @@ function updateMedalUI() {
             loadDataByDate();
             showToast('已載入 ' + date);
         }
+
+        
+        // ================= JSON 備份 / 還原（只影響「歷史清單」資料） =================
+        function exportToJSON() {
+            const records = readRecords();
+            const dates = Object.keys(records);
+            if (dates.length === 0) {
+                showToast('無資料可匯出');
+                return;
+            }
+
+            const payload = {
+                app: '血壓紀錄小幫手',
+                schemaVersion: 1,
+                exportedAt: new Date().toISOString(),
+                records: records
+            };
+
+            const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8;' });
+            const link = document.createElement('a');
+            const url = URL.createObjectURL(blob);
+            link.setAttribute('href', url);
+            link.setAttribute('download', `血壓紀錄小幫手備份_${new Date().toISOString().split('T')[0]}.json`);
+            link.click();
+            URL.revokeObjectURL(url);
+            showToast('✅ JSON 匯出成功');
+        }
+
+        function triggerImportJSON() {
+            const input = document.getElementById('importJsonInput');
+            if (!input) {
+                showToast('找不到匯入元件');
+                return;
+            }
+            input.value = '';
+            input.click();
+        }
+
+        function mergeRecords(baseRecords, incomingRecords) {
+            const out = JSON.parse(JSON.stringify(baseRecords || {}));
+
+            for (const date of Object.keys(incomingRecords || {})) {
+                if (!out[date]) out[date] = [];
+                const existing = out[date];
+
+                const keySet = new Set(existing.map(e => (e.id ? `id:${e.id}` : `sig:${date}|${e.time}|${e.sys}|${e.dia}|${e.pulse}`)));
+
+                for (const e of (incomingRecords[date] || [])) {
+                    const entry = {
+                        id: e.id || makeId(),
+                        time: e.time || '08:00',
+                        sys: parseInt(e.sys, 10),
+                        dia: parseInt(e.dia, 10),
+                        pulse: parseInt(e.pulse, 10)
+                    };
+
+                    if (!Number.isFinite(entry.sys) || !Number.isFinite(entry.dia) || !Number.isFinite(entry.pulse)) continue;
+
+                    const k1 = `id:${entry.id}`;
+                    const k2 = `sig:${date}|${entry.time}|${entry.sys}|${entry.dia}|${entry.pulse}`;
+                    if (keySet.has(k1) || keySet.has(k2)) continue;
+
+                    existing.push(entry);
+                    keySet.add(k1);
+                    keySet.add(k2);
+                }
+            }
+
+            // 最後再走一次 normalize，確保結構一致
+            return normalizeRecords(out).records;
+        }
+
+        function importFromJSONFile(evt) {
+            const file = evt && evt.target && evt.target.files ? evt.target.files[0] : null;
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = () => {
+                try {
+                    const text = reader.result;
+                    const obj = JSON.parse(text);
+
+                    // 支援兩種格式：{records:{...}} 或 直接就是 {...}
+                    const rawRecords = (obj && typeof obj === 'object' && obj.records) ? obj.records : obj;
+
+                    const normalized = normalizeRecords(rawRecords).records;
+                    const incomingDates = Object.keys(normalized || {});
+                    if (incomingDates.length === 0) {
+                        showToast('匯入檔沒有任何可用資料');
+                        return;
+                    }
+
+                    const current = readRecords();
+                    const currentHasData = Object.keys(current).length > 0;
+
+                    let finalRecords = normalized;
+
+                    // 依需求：匯入時永遠採用「覆蓋」，不再詢問
+                    // 若已有資料，直接以匯入檔取代現有資料
+                    // finalRecords 預設即為 normalized
+                    if (currentHasData) {
+                        // 可在此保留提示（不彈窗）
+                        // showToast('已用匯入檔覆蓋現有資料');
+                    }
+
+                    writeRecords(finalRecords);
+
+                    // 重新渲染畫面：歷史清單 / 趨勢圖
+                    renderHistoryList();
+                    setTimeout(() => {
+                        try { renderChart(); } catch (e) {}
+                    }, 80);
+
+                    showToast('✅ JSON 匯入成功');
+                } catch (err) {
+                    console.error(err);
+                    showToast('❌ 匯入失敗：JSON 格式不正確或內容不相容');
+                }
+            };
+            reader.onerror = () => showToast('❌ 讀取檔案失敗');
+            reader.readAsText(file, 'utf-8');
+        }
+
 
         function exportToCSV() {
             const records = readRecords();
